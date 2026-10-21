@@ -24,7 +24,7 @@ export class ApiError extends Error { constructor(public status: number, msg: st
 
 export class SyncEngine extends EventEmitter {
   private token: string | null = loadToken();
-  private base: Snapshot | null = readJson<Snapshot | null>('cache.json', null);
+  private base: Snapshot | null = validSnap(readJson<Snapshot | null>('cache.json', null));
   private outbox: QueuedOp[] = readJson<QueuedOp[]>('outbox.json', []);
   private connection: Connection = 'connecting';
   private lastSyncedAt: string | null = null;
@@ -126,7 +126,7 @@ export class SyncEngine extends EventEmitter {
   /** Unauthenticated call (sign-in screen). */
   anon<T>(method: string, path: string, body?: unknown) { return this.http<T>(method, path, body, null); }
   private async adoptSession(res: SignInResponse) {
-    if (this.base && this.base.me.id !== res.member.id) { this.base = null; this.outbox = []; this.persist(); }
+    if (this.base && this.base.me?.id !== res.member?.id) { this.base = null; this.outbox = []; this.persist(); }
     this.token = res.token; saveToken(res.token); if ((res as any).expiresAt) updateSettings({ sessionExpiresAt: (res as any).expiresAt });
     this.lastError = null;
     try {
@@ -251,3 +251,6 @@ export class SyncEngine extends EventEmitter {
   private persist() { writeJson('outbox.json', this.outbox); if (this.base) writeJson('cache.json', this.base); }
   clearError() { this.lastError = null; this.emitState(); }
 }
+
+/** 0.6.17: a stale/partial cache.json (no `me`) must never break sign-in. */
+function validSnap(s: any): Snapshot | null { return s && typeof s === 'object' && s.me?.id && Array.isArray(s.projects) ? s : null; }
